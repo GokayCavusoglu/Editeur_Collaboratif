@@ -1,0 +1,103 @@
+PROJENIN TANITIMI
+
+Java ile yazilmis bir editeur collaboratif.
+Birden fazla client ayni dokumani ayni anda duzenleyebiliyor.
+TCP soket uzerinden iletisim, sunucu-istemci mimarisi.
+
+
+MIMARISI
+
+4 katman var, birbirinden bagimsiz:
+- core      : dokumanin kendisi (satirlar listesi + ReadWriteLock)
+- protocol  : komutlarin parse edilmesi (Command Pattern)
+- network   : sunucu ve client baglantilari
+- federation: sunucularin birbirine baglanmasi
+
+
+PROTOKOL
+
+5 komut var:
+- ADDL i texte   : i. satira texte ekle
+- RMVL i         : i. satiri sil
+- MDFL i texte   : i. satiri degistir
+- GETD           : tum dokumani getir
+- GETL i         : i. satiri getir
+
+
+TACHE 1 — PULL
+Basit sunucu. Client GETD gondererek dokumani alir.
+Sunucu kendisi bir sey gondermez, client talep eder.
+Her client ayri bir thread icinde calisir (ExecutorService).
+
+TACHE 2 — PUSH
+Client bir degisiklik yapinca sunucu diger tum clientlara otomatik bildirir.
+Sadece degisen satir gonderilir, tum dokuman degil.
+Mesajlar PUSH on ekiyle ayirt edilir.
+
+TACHE 3-4 — FEDERATION
+Birden fazla sunucu birbirine bagli (full-mesh).
+Her sunucu hem kendi clientlarina hizmet verir hem de diger sunucularla senkronize olur.
+Mesajlar PEER_PUSH ile iletilir.
+Her mesajin benzersiz ID si var (serverId:sequence) boylece ayni mesaj iki kez uygulanmaz.
+
+TACHE 5 — MAITRE
+Bir sunucu master olarak atanir (peers.cfg dosyasindan).
+Tum yazmalar master uzerinden gecer, master MASTER_ORDER numarasi verir.
+Slaveler bu siraya gore uygular, boylece tutarlilik garanti edilir.
+Okumalar yerelde yapilir, performans icin.
+
+TACHE 6 — DISPATCH
+Yuk dengeleme sunucusu. Clientlari sunuculara dagitir.
+Iki strateji: Round Robin ve Least Connections.
+Her 5 saniyede sunucularin canli olup olmadigini kontrol eder.
+
+TACHE 7 — TOLERANCE AUX PANNES
+Master duserse slaveler bunu algilar.
+Bully algoritmasi ile yeni bir master secilir (en yuksek port numarali sunucu kazanir).
+Yeni master COORDINATOR mesaji gonderir.
+Veriler onceden replike edildigi icin kayip olmaz.
+
+
+ONEMLI TEKNIK SECIMLER
+
+ReadWriteLock: okumalar paralel calisir, yazmalar exclusive. Editorde okuma yazmadan fazla oldugu icin bu mantikli.
+
+CopyOnWriteArrayList: broadcast sirasinda client listesi degisse bile sorun olmaz.
+
+Command Pattern: her komut bir obje, parse ve calistirma ayri. Yeni komut eklemek kolay.
+
+Decorator Pattern: ObservableDocumentManager, push bildirimlerini ekler. Temel dokuman yonetimi degismez.
+
+Unique message ID: federation da ayni mesajin tekrar uygulanmasini onler.
+
+
+BENCHMARK SONUCLARI
+
+1 client  : 122 us latence, 3117 ops/s
+2 client  : 589 us latence, 1325 ops/s
+5 client  : 645 us latence, 1851 ops/s
+10 client : 145 us latence, 6036 ops/s
+
+Latence yazma contentiondan dolayi artiyor.
+Debit okuma paralelligi sayesinde stabil kaliyor.
+
+
+SIKCA SORULABILECEK SORULAR
+
+S: Neden ReadWriteLock?
+C: Okumalar yazmalardan cok daha sik. Boylece GETD/GETL paralel calisir, sadece ADDL/RMVL/MDFL exclusive.
+
+S: Federation da doublonlari nasil onluyorsun?
+C: Her mesajin serverId:sequence seklinde benzersiz ID si var. HashSet ile daha once gorulmus mesajlar filtrelenir.
+
+S: Bully election nasil calisiyor?
+C: Slave master in dustugunu algilar, kendinden yuksek ID li sunuculara ELECTION gonderir. Kimse cevap vermezse kendisi leader olur. Yoksa en yuksek ID li kazanir ve COORDINATOR gonderir.
+
+S: Push modu neden pull dan iyi?
+C: Pull da client surekli sorgulamak zorunda (bant genisligi israfi). Push da sadece degisiklik olunca bildirim gelir, daha dusuk latence.
+
+S: Deadlock problemi nasil cozuldu?
+C: Sunucu once dokumani gonderir, sonra ilk mesaji okur. Peer ler dokumani alip PEER_HELLO gonderir.
+
+S: MASTER_ORDER ne ise yariyor?
+C: Master her yazma islemine sirali numara verir. Tum slaveler ayni sirada uygular, boylece tutarlilik garanti.

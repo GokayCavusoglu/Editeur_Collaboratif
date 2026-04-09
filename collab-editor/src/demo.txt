@@ -1,0 +1,57 @@
+COMPILATION
+cd collab-editor
+find src -name '*.java' > files.txt && javac -d out @files.txt
+
+
+DEMO 1 — PULL
+
+Terminal 1:  java -cp out network.impl.ServerCentral 12345
+Terminal 2:  java -cp out client.CLIClient -p 12345
+  client icine yaz:  GETD
+  client icine yaz:  ADDL 4 Bonjour
+  client icine yaz:  GETD
+
+
+DEMO 2 — PUSH
+
+Terminal 1:  java -cp out network.impl.ServerCentralPush 12346
+Terminal 2:  java -cp out client.CLIClient -p 12346 --push
+Terminal 3:  java -cp out client.CLIClient -p 12346 --push
+
+  Terminal 2 client icine yaz:  ADDL 4 Hello depuis A
+  Terminal 3 te otomatik olarak [PUSH] mesaji belirir
+
+
+DEMO 3 — FEDERATION SIMPLE
+
+java -cp out test.FederationTestInProcess
+
+ou manuellement:
+Terminal 1:  java -cp out federation.FederatedServer -p 12350 --id A
+Terminal 2:  java -cp out federation.FederatedServer -p 12351 --id B --peer localhost:12350
+Terminal 3:  java -cp out federation.FederatedServer -p 12352 --id C --peer localhost:12350 --peer localhost:12351
+
+
+DEMO 4 — MAITRE + DISPATCH + ELECTION
+
+creer peers.cfg:
+master = localhost 12360
+peer = localhost 12361
+peer = localhost 12362
+
+Terminal 1:  java -cp out federation.master.MasterFederatedServer -p 12360 --id Master -c peers.cfg
+Terminal 2:  java -cp out federation.master.MasterFederatedServer -p 12361 --id Slave1 -c peers.cfg
+Terminal 3:  java -cp out federation.master.MasterFederatedServer -p 12362 --id Slave2 -c peers.cfg
+Terminal 4:  java -cp out dispatch.ServerDispatch --port 12300 --config peers.cfg --strategy ROUND_ROBIN
+Terminal 5:  java -cp out dispatch.DispatchClient
+
+
+DEMO 5 — TEST COMPLET (maitre + dispatch + benchmark + election, tout en un)
+
+java -cp out test.MasterFederationTest
+
+
+DEMO 6 — CONVERGENCE
+
+java -cp out test.AllInOneTest pull 4 8
+java -cp out test.AllInOneTest push 4 8
